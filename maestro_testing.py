@@ -39,7 +39,7 @@ class Controller:
         self.sendCmd(cmd)
 
     def mainControl(self):
-        # Neutral positions
+        #nuetral
         waist, hturn, htilt = 6000, 6000, 6000
         wheels, turn = 6000, 6000
         
@@ -49,17 +49,16 @@ class Controller:
         print("0: KILL ALL (Silence) | Q: Quit")
 
         while True:
-            # Simplified for SSH: Type key then press Enter
+            
             user_input = input("-> ").lower()
 
             if user_input == 'q':
                 break
             
-            # --- Kill Command (Stops Buzzing) ---
             elif user_input == '0':
                 print("Killing all signals...")
                 for i in range(6): self.setTarget(i, 0)
-                continue # Skip the rest of the loop
+                continue
 
             # --- Logic ---
             elif user_input == "1": wheels += 400
