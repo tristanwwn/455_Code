@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Tango Control</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+    <style>
+        body { font-family: sans-serif; text-align: center; background: #222; color: white; margin: 0; padding: 20px; }
+        .control-group { margin: 20px; padding: 10px; border: 1px solid #444; border-radius: 10px; background: #333; }
+        .slider { width: 80%; height: 25px; }
+        button { padding: 15px; margin: 5px; border-radius: 5px; cursor: pointer; }
+        .voice-btn { background: #4CAF50; color: white; border: none; }
+        .stop-btn { background: #f44336; color: white; border: none; width: 80%; margin-top: 20px; }
+        
+        #joystick-zone { 
+            width: 200px; 
+            height: 200px; 
+            margin: 20px auto; 
+            background: #444; 
+            border-radius: 50%; 
+            position: relative; 
+        }
+        
+        #debug { 
+            margin: 20px; 
+            padding: 10px; 
+            background: #111; 
+            font-family: monospace; 
+            font-size: 12px;
+        }
+    </style>
+</head>
+<body>
+    <h1>Robot Control Layer</h1>
+
+    <div class="control-group">
+        <h3>Movement Joystick</h3>
+        <div id="joystick-zone"></div>
+        <div id="debug">Waiting for joystick input...</div>
+    </div>
+
+    <div class="control-group">
+        <h3>Head Control</h3>
+        <p>Pan (Left/Right)</p>
+        <input type="range" min="4000" max="8000" value="6000" class="slider" oninput="sendMove('pan', this.value)">
+        <p>Tilt (Up/Down)</p>
+        <input type="range" min="4000" max="8000" value="6000" class="slider" oninput="sendMove('tilt', this.value)">
+    </div>
+
+    <div class="control-group">
+        <h3>Voice Phrases</h3>
+        <button class="voice-btn" onclick="sendSpeak('Hello Hunter')">Hello</button>
+        <button class="voice-btn" onclick="sendSpeak('Hunter is so cool')">Status</button>
+        <button class="voice-btn" onclick="sendSpeak('Please do not touch my wheels')">Warning</button>
+    </div>
+
+    <button class="stop-btn" onclick="sendMove('stop', 6000)">EMERGENCY NEUTRAL</button>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/nipplejs/0.7.3/nipplejs.min.js"></script>
+    
+    <script>
+        const debugDiv = document.getElementById('debug');
+        
+        function sendMove(type, val) {
+            fetch('/control', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({type: type, value: val})
+            });
+        }
+
+        function sendSpeak(msg) {
+            fetch('/speak', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({phrase: msg})
+            });
+        }
+
+        // Throttling variables
+        let lastSendTime = 0;
+        const throttleDelay = 100;
+
+        // INITIALIZE THE JOYSTICK
+        var manager = nipplejs.create({
+            zone: document.getElementById('joystick-zone'),
+            mode: 'static',
+            position: {left: '50%', top: '50%'},
+            color: 'green',
+            size: 150
+        });
+
+        // THE FIX: nipplejs uses angle and distance, NOT vector!
+        manager.on('move', function (evt, data) {
+            const now = Date.now();
+            
+            // Log everything to see what nipplejs actually gives us
+            debugDiv.innerHTML = `Raw data keys: ${Object.keys(data).join(', ')}<br>` +
+                                 `angle: ${JSON.stringify(data.angle)}<br>` +
+                                 `distance: ${data.distance}<br>` +
+                                 `force: ${data.force}`;
+            
+            if ((now - lastSendTime > throttleDelay)) {
+                // Calculate X and Y from angle and distance
+                // NippleJS gives us:
+                // - data.angle.radian (0 to 2π, where 0 is right, π/2 is up)
+                // - data.distance (0 to ~50-100 depending on joystick size)
+                // - data.force (0 to 1, normalized distance)
+                
+                let angle = data.angle.radian;
+                let force = data.force; // This is 0-1
+                
+                // Convert polar to cartesian
+                // Adjust coordinates: 0° = right, 90° = up in standard coords
+                // For robot: we want up=forward(+Y), right=right(+X)
+                let x_norm = Math.cos(angle) * force;  // -1 to 1
+                let y_norm = Math.sin(angle) * force;  // -1 to 1
+                
+                // Map to servo range 4000-8000 (center at 6000)
+                let x = Math.round(x_norm * 2000 + 6000);
+                let y = Math.round(y_norm * 2000 + 6000);
+                
+                // Clamp values
+                x = Math.max(4000, Math.min(8000, x));
+                y = Math.max(4000, Math.min(8000, y));
+                
+                debugDiv.innerHTML += `<br>Sending X: ${x}, Y: ${y}`;
+                console.log("Joystick moving:", x, y);
+
+                fetch('/drive', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({x: x, y: y})
+                })
+                .then(response => response.json())
+                .then(data => console.log('Drive response:', data))
+                .catch(error => console.error('Drive error:', error));
+                
+                lastSendTime = now;
+            }
+        });
+
+        // Stop wheels when finger is lifted
+        manager.on('end', function () {
+            debugDiv.innerHTML = 'Joystick released - stopping';
+            console.log("Joystick released");
+            
+            fetch('/drive', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({x: 6000, y: 6000})
+            });
+        });
+    </script>
+</body>
+</html>
