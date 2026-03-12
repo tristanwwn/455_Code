@@ -9,6 +9,10 @@ line_number = 0
 current_parent = None
 definitions = {}
 rules = []
+rule_stack = [None] * 7
+
+debug_logging = True
+debug_stack = []
 
 # NEED TO HANDLE '_' IN INPUT: THIS IS WILDCARD THAT USER CAN REPLACE WITH ANYTHING
 # NEED TO HANDLE $STRING IN RESPONSE, ROBOT REPLACES THIS WITH STORED USER INFO
@@ -20,8 +24,20 @@ class DialogueRule:
         self.level = 0
         self.input = []
         self.output = []
-        self.robot_action = None
+        self.robot_action = []
         self.children = []
+
+
+def debug_log():
+    global error_count
+    global line_number
+    global debug_stack
+
+    if debug_logging:
+        for bugs in debug_stack:
+            print(bugs)
+
+
 
 
 # This is for parsing the definitions only, not rules, such as:
@@ -31,9 +47,10 @@ def parse_definitions(string_line):
     global line_number
     global error_count
 
+
     # Cant only have keys with no values
     if len(indexed_line) < 2:
-        print(f"ERROR at line {line_number}: while parsing definitions")
+        debug_stack.append(f"ERROR at line {line_number}: while parsing definitions")
         error_count += 1
         return
 
@@ -58,7 +75,7 @@ def strip_args(string_vals):
 
     if not string_vals.startswith("[") or not string_vals.endswith("]"):
         error_count += 1
-        print(f"ERROR at line number {line_number}: List values must be surrounded with open and closing brackets.")
+        debug_stack.append(f"ERROR at line number {line_number}: List values must be surrounded with open and closing brackets.")
         return None
     else:
         stripped_vals = string_vals.strip('[]')
@@ -68,12 +85,14 @@ def strip_args(string_vals):
 
 
 
-
+# Parses rules and creates rule object for each applicable line in the file
 def parse_rules(string_line):
         global error_count
         global line_number
         global current_parent
         global current_level
+        global rules
+        global rule_stack
 
         indexed_line = string_line.split(':')
         #print(indexed_line)
@@ -81,7 +100,7 @@ def parse_rules(string_line):
         # -------- ERROR CATCHING --------
         if len(indexed_line) < 3:
             error_count += 1
-            print(f"ERROR at line number {line_number}: Missing minimum arguments for rule.")
+            debug_stack.append(f"ERROR at line number {line_number}: Missing minimum arguments for rule.")
             return
 
         # u: (~greet): [hi hello "what up" sup] < arm_raise >    -- Example of string
@@ -94,19 +113,31 @@ def parse_rules(string_line):
 
         depth = indexed_line[0].strip()[1:]
         if depth == "":
+            #Reset the stack if we see top level rule, append that rule to rules, then set the top of stack to root rule
+            rules.append(rule)
+
+            rule_stack = [None] * 7
+            rule_stack[0] = rule
+
             rule.level = 0
-            current_parent = rule
+            current_parent = None
             current_level = 0
+
+        # Error catch if we're > 6 rules deep
         elif int(depth) > 6:
             error_count += 1
-            print(f"ERROR at line number {line_number}: Over max depth level of 6. (Depth at max 6 deep)")
-
+            debug_stack.append(f"ERROR at line number {line_number}: Over max depth level of 6. (Depth at max 6 deep)")
             return
+
+        # Otherwise we add child rule.
         else:
+            previous_level = int(depth) -1
             rule.level = int(depth)
             current_level = int(depth)
+            rule_stack[previous_level].children.append(rule)
+            rule_stack[int(depth)] = rule
 
-        print(current_level)
+        #print(current_level)
 
 
         # -------- PARSE INPUTS --------
@@ -133,8 +164,9 @@ def parse_rules(string_line):
         rule.actions = re.findall(r'<(\w+)>', stripped_outputs)
 
         # Remove the angled bracket movement actions from the dialogue string
-        stripped_outputs = re.sub(r'<\w+>', '', stripped_outputs.strip())
+        stripped_outputs = re.sub(r'<\w+>', '', stripped_outputs).strip()
 
+        #print(repr(stripped_outputs))
         if stripped_outputs.startswith('['):
             list_outputs = strip_args(stripped_outputs)
             if list_outputs is not None:
@@ -159,8 +191,10 @@ try:
             line_number += 1
             parse_rules(line)
 
+    for rule in rules:
+        print(f"Rule: {rule.input} -> {rule.output} actions={rule.actions} children={len(rule.children)}")
 
-    print(error_count)
+    debug_log()
 
 except FileNotFoundError:
     print("ERROR: Couldn't read the input file.")
