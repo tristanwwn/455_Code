@@ -9,6 +9,43 @@ class Controller:
         self.usb = serial.Serial(ttyStr)
         self.PololuCmd = chr(0xaa) + chr(device)
 
+    
+    def head_yes(self):
+        # Tilt head down then up then center
+        self.setTarget(3, 7000) 
+        time.sleep(0.5)
+        self.setTarget(3, 5000) 
+        time.sleep(0.5)
+        self.setTarget(3, 6000)  
+        time.sleep(0.5)
+    
+
+    def head_no(self):
+        self.setTarget(4, 7000)
+        time.sleep(0.5)
+        self.setTarget(4, 5000)
+        time.sleep(0.5)
+        self.setTarget(4, 6000)
+
+
+
+    def arm_raise(self):
+        self.setTarget(5, 8000)
+        self.setTarget(7, 3600)
+        time.sleep(1.5)
+        self.setTarget(5, 5200)
+        self.setTarget(7, 6000)
+        
+    def dance90(self):
+        self.setTarget(1, 7500)
+        time.sleep(1.0)
+        self.setTarget(1, 4500)
+        time.sleep(1.0)
+        self.setTarget(1, 6000)
+        
+    
+
+
     def drive(self, x, y):
         throttle = y
         steering = x
@@ -34,7 +71,7 @@ class Controller:
     def mainControl(self):
         # nuetral
         waist, hturn, htilt = 6000, 6000, 6000
-        wheels, turn = 6000, 6000
+        wheels, turn, arm, shoulder = 6000, 6000, 5200, 6000
 
         print("--- Robot Control Manual Mode ---")
         print("1/2: Waist | 3/4: Pan | 5/6: Tilt")
@@ -66,6 +103,10 @@ class Controller:
                 hturn += 400
             elif user_input == "6":
                 hturn -= 400
+            elif user_input == "7":
+                arm += 400
+            elif user_input == "8":
+                arm -= 400
             elif user_input == "w":
                 turn += 400
             elif user_input == "s":
@@ -74,10 +115,15 @@ class Controller:
                 waist += 400
             elif user_input == "d":
                 waist -= 400
+            elif user_input =="h":
+                shoulder += 400
+            elif user_input == "j":
+                shoulder -= 400
+
 
             # Reset to Neutral
             elif user_input == "r":
-                waist, hturn, htilt, wheels, turning = 6000, 6000, 6000, 6000, 6000
+                waist, hturn, htilt, wheels, turning, arm, shoulder = 6000, 6000, 6000, 6000, 6000, 5200, 6000
 
             # Execute
             self.setTarget(0, wheels)
@@ -85,8 +131,9 @@ class Controller:
             self.setTarget(3, htilt)
             self.setTarget(4, hturn)
             self.setTarget(2, waist)
-
-            print(f"Status: W:{waist} P:{hturn} T:{htilt} Drive:{wheels} Turn:{turning}")
+            self.setTarget(5, arm)
+            self.setTarget(7, shoulder)
+            print(f"Status: W:{waist} P:{hturn} T:{htilt} Drive:{wheels} Elbow:{arm} Shoulder:{shoulder}")
 
 
 if __name__ == "__main__":

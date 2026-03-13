@@ -3,13 +3,14 @@ import re
 import os
 import random
 import argparse
-
+import threading
 
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 from maestro_testing import Controller
 
-
+controller = Controller(ttyStr='/dev/ttyACM0')
+stop_flag = False
 
 file_path = "../dialogue/testDialogFileForPractice.txt"
 current_level = 0
@@ -46,13 +47,38 @@ def index():
 def handle_input():
     data = request.json
     user_text = data.get('text')
-    #print(f"Received: {user_text}")  # just print for now
+    #print(f"Got {user_text}")
     response_text, actions = process_user_input(user_text)
 
 
     os.system(f'espeak "{response_text}"')
-    for action in actions:
-        print(f"ACTION: {action}")
+    #for action in actions:
+        #print(f"ACTION: {action}")
+
+
+    def run_actions(actions):
+        global stop_flag
+        stop_flag = False
+        for action in actions:
+            if stop_flag:
+                print("Action interrupted by stop command")
+                break
+            if action == "head_yes":
+                controller.head_yes()
+            elif action == "head_no":
+                controller.head_no()
+            elif action == "arm_raise":
+                controller.arm_raise()
+            elif action == "dance90":
+                controller.dance90()
+            else:
+                print(f"Unknown action tag <{action}> ")
+
+    if actions:
+        t = threading.Thread(target=run_actions, args=(actions,))
+        t.daemon = True
+        t.start()
+
     return jsonify({'response': response_text, 'state': state})
 
 
@@ -74,6 +100,8 @@ def process_user_input(input_string):
     #return "yuh", []
     # Handle user input request to end execution
     if cleaned_input in ['stop', 'cancel', 'reset', 'quit']:
+        global stop_flag
+        stop_flag = True
         print("Stop request. State moved to IDLE, shutting down")
         state = "IDLE"
         current_scope = None
